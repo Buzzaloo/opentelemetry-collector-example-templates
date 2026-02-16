@@ -1,0 +1,114 @@
+receivers:
+  syslog:
+    udp:
+      listen_address: "0.0.0.0:514"
+      add_attributes: true
+    protocol: rfc3164
+    location: America/Denver
+
+processors:
+  memory_limiter:
+    check_interval: 2s
+    limit_mib: 400
+    spike_limit_mib: 80
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+
+  transform/tag_syslog_sources:
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["device.vendor"], "cisco")
+            where attributes["net.peer.ip"] == "192.168.2.10"
+          - set(resource.attributes["device.type"], "router_or_switch")
+            where attributes["net.peer.ip"] == "192.168.2.10"
+          - set(resource.attributes["log.source"], "syslog.cisco")
+            where attributes["net.peer.ip"] == "192.168.2.10"
+
+          - set(resource.attributes["device.vendor"], "pfsense")
+            where attributes["net.peer.ip"] == "192.168.2.1"
+          - set(resource.attributes["device.type"], "firewall")
+            where attributes["net.peer.ip"] == "192.168.2.1"
+          - set(resource.attributes["log.source"], "syslog.pfsense")
+            where attributes["net.peer.ip"] == "192.168.2.1"
+
+          - set(resource.attributes["device.vendor"], "esxi")
+            where attributes["net.peer.ip"] == "192.168.2.162"
+          - set(resource.attributes["device.type"], "hypervisor")
+            where attributes["net.peer.ip"] == "192.168.2.162"
+          - set(resource.attributes["log.source"], "syslog.esxi")
+            where attributes["net.peer.ip"] == "192.168.2.162"
+
+          - set(resource.attributes["log.source"], "syslog.other")
+            where resource.attributes["log.source"] == nil
+
+  filter/syslog_cisco:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'resource.attributes["log.source"] != "syslog.cisco"'
+  filter/syslog_pfsense:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'resource.attributes["log.source"] != "syslog.pfsense"'
+  filter/syslog_esxi:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'resource.attributes["log.source"] != "syslog.esxi"'
+  filter/syslog_other:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'resource.attributes["log.source"] != "syslog.other"'
+
+exporters:
+  awss3/syslog_cisco:
+    marshaler: body
+    s3uploader:
+      region: us-east-2
+      s3_bucket: REPLACE_ME_CISCO_BUCKET
+      s3_prefix: otel/syslog/cisco/
+      s3_partition_format: "year=%Y/month=%m/day=%d"
+  awss3/syslog_pfsense:
+    marshaler: body
+    s3uploader:
+      region: us-east-2
+      s3_bucket: REPLACE_ME_PFSENSE_BUCKET
+      s3_prefix: otel/syslog/pfsense/
+      s3_partition_format: "year=%Y/month=%m/day=%d"
+  awss3/syslog_esxi:
+    marshaler: body
+    s3uploader:
+      region: us-east-2
+      s3_bucket: REPLACE_ME_ESXI_BUCKET
+      s3_prefix: otel/syslog/esxi/
+      s3_partition_format: "year=%Y/month=%m/day=%d"
+  awss3/syslog_other:
+    marshaler: body
+    s3uploader:
+      region: us-east-2
+      s3_bucket: REPLACE_ME_SYSLOG_OTHER_BUCKET
+      s3_prefix: otel/syslog/other/
+      s3_partition_format: "year=%Y/month=%m/day=%d"
+
+service:
+  pipelines:
+    logs/syslog_cisco:
+      receivers: [syslog]
+      processors: [memory_limiter, transform/tag_syslog_sources, filter/syslog_cisco, batch]
+      exporters: [awss3/syslog_cisco]
+    logs/syslog_pfsense:
+      receivers: [syslog]
+      processors: [memory_limiter, transform/tag_syslog_sources, filter/syslog_pfsense, batch]
+      exporters: [awss3/syslog_pfsense]
+    logs/syslog_esxi:
+      receivers: [syslog]
+      processors: [memory_limiter, transform/tag_syslog_sources, filter/syslog_esxi, batch]
+      exporters: [awss3/syslog_esxi]
+    logs/syslog_other:
+      receivers: [syslog]
+      processors: [memory_limiter, transform/tag_syslog_sources, filter/syslog_other, batch]
+      exporters: [awss3/syslog_other]
