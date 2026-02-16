@@ -1,0 +1,71 @@
+receivers:
+  filelog/nginx:
+    include: [/var/log/nginx/*.log]
+    start_at: beginning
+    include_file_path: true
+    include_file_name: true
+
+  filelog/auth:
+    include:
+      - /var/log/auth.log
+      - /var/log/secure
+    start_at: beginning
+    include_file_path: true
+    include_file_name: true
+
+  filelog/myapp:
+    include: [/var/log/myapp/*.log]
+    start_at: beginning
+    include_file_path: true
+    include_file_name: true
+
+processors:
+  memory_limiter:
+    check_interval: 2s
+    limit_mib: 300
+    spike_limit_mib: 60
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+
+exporters:
+  awss3/nginx:
+    marshaler: body
+    s3uploader:
+      region: us-east-2
+      s3_bucket: REPLACE_ME_NGINX_BUCKET
+      s3_prefix: otel/linux-files/nginx/
+      s3_partition_format: "year=%Y/month=%m/day=%d"
+
+  awss3/auth:
+    marshaler: body
+    s3uploader:
+      region: us-east-2
+      s3_bucket: REPLACE_ME_AUTH_BUCKET
+      s3_prefix: otel/linux-files/auth/
+      s3_partition_format: "year=%Y/month=%m/day=%d"
+
+  awss3/myapp:
+    marshaler: body
+    s3uploader:
+      region: us-east-2
+      s3_bucket: REPLACE_ME_MYAPP_BUCKET
+      s3_prefix: otel/linux-files/myapp/
+      s3_partition_format: "year=%Y/month=%m/day=%d"
+
+service:
+  pipelines:
+    logs/nginx:
+      receivers: [filelog/nginx]
+      processors: [memory_limiter, batch]
+      exporters: [awss3/nginx]
+
+    logs/auth:
+      receivers: [filelog/auth]
+      processors: [memory_limiter, batch]
+      exporters: [awss3/auth]
+
+    logs/myapp:
+      receivers: [filelog/myapp]
+      processors: [memory_limiter, batch]
+      exporters: [awss3/myapp]
