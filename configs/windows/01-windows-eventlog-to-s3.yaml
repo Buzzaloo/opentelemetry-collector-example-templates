@@ -1,0 +1,38 @@
+receivers:
+  windowseventlog/system:
+    channel: System
+  windowseventlog/application:
+    channel: Application
+  windowseventlog/security:
+    channel: Security
+
+processors:
+  memory_limiter:
+    check_interval: 2s
+    limit_mib: 400
+    spike_limit_mib: 80
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+  resourcedetection:
+    detectors: [system]
+    override: false
+
+exporters:
+  awss3/windows_eventlog:
+    marshaler: body
+    s3uploader:
+      region: us-east-2
+      s3_bucket: REPLACE_ME_WINDOWS_EVENTLOG_BUCKET
+      s3_prefix: otel/windows-eventlog/
+      s3_partition_format: "year=%Y/month=%m/day=%d"
+
+service:
+  pipelines:
+    logs/windows_eventlog:
+      receivers:
+        - windowseventlog/system
+        - windowseventlog/application
+        - windowseventlog/security
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [awss3/windows_eventlog]
